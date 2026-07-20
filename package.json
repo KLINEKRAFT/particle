@@ -1,0 +1,22 @@
+{
+  "name": "particle-studio",
+  "version": "1.0.0",
+  "description": "Interactive 3D particle generator and simulator with WebGPU/WebGL2 backends, image/text/shape sources, morphing and multi-monitor support.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.1",
+    "@webgpu/types": "0.1.60",
+    "typescript": "5.9.3",
+    "vite": "6.4.3"
+  }
+}
