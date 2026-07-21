@@ -181,3 +181,20 @@ export function defaultSettings(): AppSettings {
 export function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
+
+// Recursively fill `over` onto `base`: saved values win, but any key missing
+// from `over` (e.g. fields added in a newer version) keeps its default. This
+// keeps old saved settings / imported presets forward-compatible so a missing
+// nested field can never crash the UI.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function deepMergeDefaults(base: any, over: any): any {
+  if (Array.isArray(base)) return Array.isArray(over) ? over : base;
+  if (base && typeof base === 'object' && over && typeof over === 'object') {
+    const out: Record<string, unknown> = { ...base };
+    for (const k of Object.keys(base)) {
+      if (k in over) out[k] = deepMergeDefaults(base[k], over[k]);
+    }
+    return out;
+  }
+  return over === undefined ? base : over;
+}
