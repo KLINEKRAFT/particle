@@ -56,10 +56,11 @@ export async function detectCapabilities(): Promise<BackendCapabilities> {
     recommended = 12000;
     maxRecommended = 60000;
   } else if (webgpu && cores >= 8 && deviceMemoryGb >= 8) {
-    recommended = 120000;
+    // Apple Silicon / discrete-class GPUs with a compute backend.
+    recommended = 250000;
     maxRecommended = 1000000;
   } else if (webgpu) {
-    recommended = 80000;
+    recommended = 100000;
     maxRecommended = 600000;
   } else if (webgl2 && cores >= 8) {
     recommended = 60000;
