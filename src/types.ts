@@ -9,7 +9,7 @@
 
 export type BackendType = 'webgpu' | 'webgl2';
 
-export type SourceKind = 'shape' | 'image' | 'text';
+export type SourceKind = 'shape' | 'image' | 'text' | 'model';
 
 export type ShapeKind = 'cube' | 'sphere' | 'helix' | 'torus' | 'knot' | 'lorenz';
 
@@ -195,6 +195,15 @@ export interface TextSettings {
 }
 
 // ---------------------------------------------------------------------------
+// Model (GLB / glTF) settings
+// ---------------------------------------------------------------------------
+export interface ModelSettings {
+  useModelColor: boolean;
+  solidColor: string;
+  scale: number;
+}
+
+// ---------------------------------------------------------------------------
 // Particle / render settings
 // ---------------------------------------------------------------------------
 export interface ParticleSettings {
@@ -295,6 +304,7 @@ export interface AppSettings {
   shape: ShapeSettings;
   image: ImageSettings;
   text: TextSettings;
+  model: ModelSettings;
   particles: ParticleSettings;
   motion: MotionSettings;
   color: ColorSettings;

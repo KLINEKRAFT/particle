@@ -8,6 +8,7 @@ import { MorphController } from './MorphController';
 import { PresetManager } from './PresetManager';
 import { MultiScreenManager, type SyncMessage, type SecondaryConfig } from './MultiScreenManager';
 import { UIController, type UICallbacks } from '../ui/UIController';
+import { sampleModel } from '../generators/ModelSampler';
 import { detectCapabilities } from '../util/capabilities';
 import { defaultSettings, clone } from '../config/defaults';
 import type { AppSettings, BackendCapabilities, SourceKind } from '../types';
@@ -46,6 +47,7 @@ export class AppController {
   private depthBitmap: ImageBitmap | null = null;
   private fontName: string | null = null;
   private fontDataUrl: string | null = null;
+  private modelData: ArrayBuffer | string | null = null;
 
   private regenTimer = 0;
   private countTimer = 0;
@@ -183,6 +185,7 @@ export class AppController {
       onImageFile: (f) => this.loadImage(f),
       onDepthMapFile: (f) => this.loadDepthMap(f),
       onFontFile: (f) => this.loadFont(f),
+      onModelFile: (f) => this.loadModelFile(f),
       onCamera: (a) => this.onCamera(a),
       onPreset: (a, name) => this.onPreset(a, name),
       onPresentation: () => this.togglePresentation(),
@@ -396,6 +399,14 @@ export class AppController {
         fontName: this.fontName, fontDataUrl: this.fontDataUrl,
       });
     }
+    if (this.settings.source === 'model') {
+      if (!this.modelData) {
+        this.ui?.showToast('Drop a .glb / .gltf model in the Model panel to generate particles.', 'info');
+        throw new Error('cancelled');
+      }
+      const data = this.modelData instanceof ArrayBuffer ? this.modelData.slice(0) : this.modelData;
+      return sampleModel(data, this.settings.model, count);
+    }
     // image
     if (!this.imageBitmap) {
       // No image yet — show a gentle plane placeholder is undesirable; keep prior.
@@ -416,6 +427,23 @@ export class AppController {
   }
 
   // ---- Asset loading -------------------------------------------------------
+  private async loadModelFile(file: File): Promise<void> {
+    try {
+      if (file.size > 80 * 1024 * 1024) throw new Error('model too large (>80MB)');
+      const isGlb = file.name.toLowerCase().endsWith('.glb');
+      this.modelData = isGlb ? await file.arrayBuffer() : await file.text();
+      this.settings.source = 'model';
+      if (this.settings.model.useModelColor) this.settings.color.mode = 'image';
+      this.ui?.refresh();
+      this.ui?.setSourceLabel(this.sourceLabel());
+      await this.doGenerate(true);
+      this.broadcastSettings();
+      this.ui?.showToast('Model loaded: ' + file.name);
+    } catch (err) {
+      this.ui?.showToast('Could not load model: ' + (err instanceof Error ? err.message : 'unsupported / compressed'), 'error', 5000);
+    }
+  }
+
   private async loadImage(file: File): Promise<void> {
     try {
       const bmp = await this.decodeImage(file);
@@ -666,7 +694,10 @@ export class AppController {
     this.canvas.addEventListener('drop', (e) => {
       e.preventDefault();
       const f = e.dataTransfer?.files?.[0];
-      if (f && f.type.startsWith('image/')) this.loadImage(f);
+      if (!f) return;
+      const name = f.name.toLowerCase();
+      if (name.endsWith('.glb') || name.endsWith('.gltf')) this.loadModelFile(f);
+      else if (f.type.startsWith('image/')) this.loadImage(f);
     });
   }
 
@@ -798,6 +829,7 @@ export class AppController {
       return k.charAt(0).toUpperCase() + k.slice(1);
     }
     if (this.settings.source === 'text') return 'Text';
+    if (this.settings.source === 'model') return 'Model';
     return 'Image';
   }
 

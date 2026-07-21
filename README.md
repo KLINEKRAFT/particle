@@ -24,6 +24,9 @@ HTML/CSS/TS and is fully decoupled from the rendering engine.
   - **Text → particles:** multi-line text rasterised in a Web Worker with
     extrude / bevel / rounded / wave / layered depth. Browser fonts plus local
     `.ttf` / `.otf` / `.woff` upload.
+  - **3D model → particles:** drag & drop a `.glb` / `.gltf` model; points are
+    sampled across the mesh surface (area-weighted) for a true 3D particle form,
+    using the model's own material/vertex colours or a solid override.
 - **Morphing** between any two sources with spring physics, easing, and
   scatter / explode / spiral impulses.
 - **Continuous motion:** curl & simplex noise, brownian, orbital, wave, vortex,

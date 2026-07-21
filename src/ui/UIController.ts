@@ -20,6 +20,7 @@ export interface UICallbacks {
   onImageFile: (file: File) => void;
   onDepthMapFile: (file: File) => void;
   onFontFile: (file: File) => void;
+  onModelFile: (file: File) => void;
   onCamera: (action: 'reset' | 'frame' | 'front' | 'side' | 'top' | 'iso') => void;
   onPreset: (action: 'apply' | 'save' | 'rename' | 'duplicate' | 'delete' | 'export' | 'import' | 'reset', name?: string) => void;
   onPresentation: () => void;
@@ -53,6 +54,8 @@ export class UIController {
   private shapeGroup!: HTMLElement;
   private imageGroup!: HTMLElement;
   private textGroup!: HTMLElement;
+  private modelGroup!: HTMLElement;
+  private modelInput!: HTMLInputElement;
 
   constructor(root: HTMLElement, settings: AppSettings, defaults: AppSettings, cb: UICallbacks) {
     this.root = root;
@@ -128,9 +131,11 @@ export class UIController {
     this.shapeGroup = this.groupShape();
     this.imageGroup = this.groupImage();
     this.textGroup = this.groupText();
+    this.modelGroup = this.groupModel();
     panel.appendChild(this.shapeGroup);
     panel.appendChild(this.imageGroup);
     panel.appendChild(this.textGroup);
+    panel.appendChild(this.modelGroup);
     panel.appendChild(this.groupParticles());
     panel.appendChild(this.groupMotion());
     panel.appendChild(this.groupColor());
@@ -151,6 +156,7 @@ export class UIController {
         { value: 'shape', label: 'Shape' },
         { value: 'image', label: 'Image' },
         { value: 'text', label: 'Text' },
+        { value: 'model', label: 'Model (3D / GLB)' },
       ],
     });
     // Override source select to route through onSourceChange
@@ -251,6 +257,7 @@ export class UIController {
     if (this.shapeGroup) this.shapeGroup.style.display = src === 'shape' ? '' : 'none';
     if (this.imageGroup) this.imageGroup.style.display = src === 'image' ? '' : 'none';
     if (this.textGroup) this.textGroup.style.display = src === 'text' ? '' : 'none';
+    if (this.modelGroup) this.modelGroup.style.display = src === 'model' ? '' : 'none';
   }
 
   private groupImage(): HTMLElement {
@@ -345,6 +352,37 @@ export class UIController {
       fontUpload,
     ];
     return group('Text', false, children);
+  }
+
+  private groupModel(): HTMLElement {
+    const c = this.ctx;
+    const dz = document.createElement('div');
+    dz.className = 'dropzone';
+    dz.tabIndex = 0;
+    dz.setAttribute('role', 'button');
+    dz.setAttribute('aria-label', 'Upload 3D model: drop a .glb / .gltf file or click to browse');
+    dz.innerHTML = '<div class="dz-inner"><b>Drop 3D model</b><span>GLB · glTF (uncompressed)</span></div>';
+    dz.addEventListener('click', () => this.modelInput.click());
+    dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') this.modelInput.click(); });
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dz.classList.remove('drag');
+      const f = e.dataTransfer?.files?.[0];
+      if (f) this.cb.onModelFile(f);
+    });
+    const note = document.createElement('p');
+    note.className = 'note';
+    note.textContent = 'Points are sampled across the model surface (area-weighted). Bigger particle counts capture finer detail.';
+    const children = [
+      dz,
+      toggle(c, { label: 'Use model colors', path: 'model.useModelColor', regen: true }),
+      colorInput(c, { label: 'Solid color', path: 'model.solidColor', regen: true }),
+      slider(c, { label: 'Scale', path: 'model.scale', min: 0.3, max: 2, step: 0.05, regen: true }),
+      note,
+    ];
+    return group('Model', false, children);
   }
 
   private groupParticles(): HTMLElement {
@@ -651,7 +689,8 @@ export class UIController {
     this.fileInput = this.hiddenFile('image/png,image/jpeg,image/webp,image/svg+xml', (f) => this.cb.onImageFile(f));
     this.depthInput = this.hiddenFile('image/*', (f) => this.cb.onDepthMapFile(f));
     this.fontInput = this.hiddenFile('.ttf,.otf,.woff,.woff2,font/*', (f) => this.cb.onFontFile(f));
-    this.root.append(this.fileInput, this.depthInput, this.fontInput);
+    this.modelInput = this.hiddenFile('.glb,.gltf,model/gltf-binary,model/gltf+json', (f) => this.cb.onModelFile(f));
+    this.root.append(this.fileInput, this.depthInput, this.fontInput, this.modelInput);
   }
 
   private hiddenFile(accept: string, onFile: (f: File) => void): HTMLInputElement {
