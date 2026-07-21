@@ -215,30 +215,32 @@ export class WebGPUParticleBackend implements ParticleBackend {
     const baseColor = this.buildColorNode();
     material.colorNode = baseColor;
 
-    // soft particle alpha from sprite quad uv
-    const c = uv().sub(0.5);
-    const r = length(c);
-    const alpha = float(1).toVar();
-    // soft (default)
-    alpha.assign(smoothstep(0.5, float(0.5).sub(u.softEdge.mul(0.5)).sub(0.02), r));
-    If(u.style.greaterThan(0.5).and(u.style.lessThan(1.5)), () => {
-      alpha.assign(float(1).sub(smoothstep(0.42, 0.5, r))); // dot
-    });
-    If(u.style.greaterThan(1.5).and(u.style.lessThan(2.5)), () => {
-      alpha.assign(step(max(abs(c.x), abs(c.y)), 0.5)); // square
-    });
-    If(u.style.greaterThan(2.5).and(u.style.lessThan(3.5)), () => {
-      alpha.assign(pow(smoothstep(0.5, 0.0, r), 1.5)); // glowing disc
-    });
-    If(u.style.greaterThan(3.5).and(u.style.lessThan(4.5)), () => {
-      const crossA = max(smoothstep(0.08, 0.0, abs(c.x)), smoothstep(0.08, 0.0, abs(c.y)));
-      alpha.assign(max(crossA.mul(float(1).sub(r.mul(1.6))), smoothstep(0.5, 0.0, r))); // spark
-    });
-    If(u.style.greaterThan(4.5), () => {
-      alpha.assign(smoothstep(0.5, 0.35, r)); // sphere-ish
-    });
-
-    material.opacityNode = alpha.mul(u.opacity);
+    // soft particle alpha from sprite quad uv — wrapped in Fn() so the
+    // control-flow / mutable TSL ops have a builder stack.
+    material.opacityNode = Fn(() => {
+      const c = uv().sub(0.5);
+      const r = length(c);
+      const alpha = float(1).toVar();
+      // soft (default)
+      alpha.assign(smoothstep(0.5, float(0.5).sub(u.softEdge.mul(0.5)).sub(0.02), r));
+      If(u.style.greaterThan(0.5).and(u.style.lessThan(1.5)), () => {
+        alpha.assign(float(1).sub(smoothstep(0.42, 0.5, r))); // dot
+      });
+      If(u.style.greaterThan(1.5).and(u.style.lessThan(2.5)), () => {
+        alpha.assign(step(max(abs(c.x), abs(c.y)), 0.5)); // square
+      });
+      If(u.style.greaterThan(2.5).and(u.style.lessThan(3.5)), () => {
+        alpha.assign(pow(smoothstep(0.5, 0.0, r), 1.5)); // glowing disc
+      });
+      If(u.style.greaterThan(3.5).and(u.style.lessThan(4.5)), () => {
+        const crossA = max(smoothstep(0.08, 0.0, abs(c.x)), smoothstep(0.08, 0.0, abs(c.y)));
+        alpha.assign(max(crossA.mul(float(1).sub(r.mul(1.6))), smoothstep(0.5, 0.0, r))); // spark
+      });
+      If(u.style.greaterThan(4.5), () => {
+        alpha.assign(smoothstep(0.5, 0.35, r)); // sphere-ish
+      });
+      return alpha.mul(u.opacity);
+    })();
     material.transparent = true;
     material.depthWrite = false;
     material.depthTest = false;
@@ -274,47 +276,51 @@ export class WebGPUParticleBackend implements ParticleBackend {
     const c3 = vec3(u.color3 as any);
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
-    const result = vec3(0).toVar();
-    result.assign(c1); // solid default
-    If(u.colorMode.greaterThan(0.5).and(u.colorMode.lessThan(1.5)), () => {
-      result.assign(mix(c1, c2, proj));
-    });
-    If(u.colorMode.greaterThan(1.5).and(u.colorMode.lessThan(2.5)), () => {
-      const a = mix(c1, c2, proj.mul(2));
-      const b = mix(c2, c3, proj.sub(0.5).mul(2));
-      result.assign(mix(a, b, step(0.5, proj)));
-    });
-    If(u.colorMode.greaterThan(2.5).and(u.colorMode.lessThan(3.5)), () => {
-      result.assign(img); // image color
-    });
-    If(u.colorMode.greaterThan(3.5).and(u.colorMode.lessThan(4.5)), () => {
-      result.assign(normalize(abs(pos).add(0.15))); // position
-    });
-    If(u.colorMode.greaterThan(4.5).and(u.colorMode.lessThan(5.5)), () => {
-      const d = clamp(pos.z.div(boundR).add(0.5), 0, 1);
-      result.assign(mix(c1, c2, d)); // depth
-    });
-    If(u.colorMode.greaterThan(5.5).and(u.colorMode.lessThan(6.5)), () => {
-      const sp = clamp(length(vel).mul(2), 0, 1);
-      result.assign(mix(c1, c2, sp)); // velocity
-    });
-    If(u.colorMode.greaterThan(6.5).and(u.colorMode.lessThan(7.5)), () => {
-      const h = fract(gY.add(u.time.mul(u.colorAnimSpeed).mul(0.1)));
-      result.assign(mx_hsvtorgb(vec3(h, 0.85, 1.0))); // rainbow
-    });
-    If(u.colorMode.greaterThan(7.5), () => {
-      const idx = fract(gY.add(u.time.mul(u.colorAnimSpeed).mul(0.05)));
-      result.assign(mix(c1, mix(c2, c3, idx), idx)); // palette
-    });
+    // Control-flow (If) and mutable (toVar/assign) TSL ops must live inside a
+    // Fn() so the builder has a stack. This node runs per-vertex/fragment.
+    return Fn(() => {
+      const result = vec3(0).toVar();
+      result.assign(c1); // solid default
+      If(u.colorMode.greaterThan(0.5).and(u.colorMode.lessThan(1.5)), () => {
+        result.assign(mix(c1, c2, proj));
+      });
+      If(u.colorMode.greaterThan(1.5).and(u.colorMode.lessThan(2.5)), () => {
+        const a = mix(c1, c2, proj.mul(2));
+        const b = mix(c2, c3, proj.sub(0.5).mul(2));
+        result.assign(mix(a, b, step(0.5, proj)));
+      });
+      If(u.colorMode.greaterThan(2.5).and(u.colorMode.lessThan(3.5)), () => {
+        result.assign(img); // image color
+      });
+      If(u.colorMode.greaterThan(3.5).and(u.colorMode.lessThan(4.5)), () => {
+        result.assign(normalize(abs(pos).add(0.15))); // position
+      });
+      If(u.colorMode.greaterThan(4.5).and(u.colorMode.lessThan(5.5)), () => {
+        const d = clamp(pos.z.div(boundR).add(0.5), 0, 1);
+        result.assign(mix(c1, c2, d)); // depth
+      });
+      If(u.colorMode.greaterThan(5.5).and(u.colorMode.lessThan(6.5)), () => {
+        const sp = clamp(length(vel).mul(2), 0, 1);
+        result.assign(mix(c1, c2, sp)); // velocity
+      });
+      If(u.colorMode.greaterThan(6.5).and(u.colorMode.lessThan(7.5)), () => {
+        const h = fract(gY.add(u.time.mul(u.colorAnimSpeed).mul(0.1)));
+        result.assign(mx_hsvtorgb(vec3(h, 0.85, 1.0))); // rainbow
+      });
+      If(u.colorMode.greaterThan(7.5), () => {
+        const idx = fract(gY.add(u.time.mul(u.colorAnimSpeed).mul(0.05)));
+        result.assign(mix(c1, mix(c2, c3, idx), idx)); // palette
+      });
 
-    // color adjustments (hue / sat / brightness / contrast)
-    const hsv = mx_rgbtohsv(result).toVar();
-    hsv.x.assign(fract(hsv.x.add(u.hueShift)));
-    hsv.y.assign(clamp(hsv.y.mul(u.saturation), 0, 1));
-    const adj = mx_hsvtorgb(hsv).toVar();
-    adj.mulAssign(u.brightness);
-    adj.assign(adj.sub(0.5).mul(u.contrast).add(0.5));
-    return clamp(adj, 0, 1);
+      // color adjustments (hue / sat / brightness / contrast)
+      const hsv = mx_rgbtohsv(result).toVar();
+      hsv.x.assign(fract(hsv.x.add(u.hueShift)));
+      hsv.y.assign(clamp(hsv.y.mul(u.saturation), 0, 1));
+      const adj = mx_hsvtorgb(hsv).toVar();
+      adj.mulAssign(u.brightness);
+      adj.assign(adj.sub(0.5).mul(u.contrast).add(0.5));
+      return clamp(adj, 0, 1);
+    })();
   }
 
   setTargets(target: ParticleTarget, snap: boolean): void {
