@@ -189,6 +189,8 @@ export class AppController {
       onPause: () => this.togglePause(),
       onFullscreen: () => this.toggleFullscreen(),
       onLaunchDual: () => this.launchDual(),
+      onSpanDual: () => this.enterManualSpan(2),
+      onSpanExit: () => this.exitManualSpan(),
       onMirror: () => this.openMirror(),
       onCopyLink: () => this.copyLink(),
     };
@@ -233,9 +235,53 @@ export class AppController {
   }
 
   private applySecondaryViewOffset(): void {
-    if (!this.secondary || this.secondary.mirror) return;
+    if (!this.secondary) return;
     const s = this.secondary;
+    // Manual-span slice: derive the full width from this window's own size, so
+    // identical monitors line up into one continuous scene.
+    if (s.spanCount > 1) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      this.camera.applyViewOffset(w * s.spanCount, h, w * Math.max(0, s.spanIndex), 0, w, h);
+      return;
+    }
+    if (s.mirror) return;
     this.camera.applyViewOffset(s.fullW, s.fullH, s.offX, s.offY, s.w, s.h);
+  }
+
+  // ---- Manual span (works in any browser; primary = left slice) ------------
+  private spanCount = 0;
+
+  private enterManualSpan(count: number): void {
+    this.spanCount = count;
+    // Open the other slices (this window is slice 0 / left).
+    let opened = 0;
+    for (let i = 1; i < count; i++) {
+      if (this.ms.openSpanWindow(i, count)) opened++;
+    }
+    if (opened === 0) {
+      this.spanCount = 0;
+      this.ui?.showToast('Popup blocked. Allow popups for this site, then try Span again.', 'error', 6000);
+      return;
+    }
+    this.applyPrimaryViewOffset();
+    this.broadcastSettings();
+    this.ui?.showToast('Span started. Drag the new window to your 2nd monitor, press F to fullscreen both and H to hide this panel. Click "Stop span" to exit.', 'info', 8000);
+  }
+
+  private exitManualSpan(): void {
+    this.spanCount = 0;
+    this.camera.clearViewOffset();
+    this.camera.resize(window.innerWidth, window.innerHeight);
+    this.ms.closeAll();
+    this.ui?.showToast('Span stopped.');
+  }
+
+  private applyPrimaryViewOffset(): void {
+    if (this.spanCount <= 1) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this.camera.applyViewOffset(w * this.spanCount, h, 0, 0, w, h);
   }
 
   // ---- Settings changes ----------------------------------------------------
@@ -566,7 +612,10 @@ export class AppController {
   private async launchDual(): Promise<void> {
     const caps = MultiScreenManager.detect();
     if (!caps.windowManagement) {
-      this.ui.showToast('Window Management API not supported. Use "Open mirror window" or stretch one window across both monitors.', 'error', 6000);
+      // Auto-placement needs Chromium's Window Management API. Fall back to the
+      // manual span, which works in any browser (incl. Safari).
+      this.ui.showToast('Auto dual-display needs Chrome/Edge. Starting manual span instead — drag the new window to your 2nd monitor.', 'info', 7000);
+      this.enterManualSpan(2);
       return;
     }
     try {
@@ -665,6 +714,7 @@ export class AppController {
     this.rm.resize(w, h, this.settings.performance.pixelRatioCap, this.settings.performance.renderScale);
     this.camera.resize(w, h);
     if (this.isSecondary) this.applySecondaryViewOffset();
+    else if (this.spanCount > 1) this.applyPrimaryViewOffset();
   }
 
   // ---- Main loop -----------------------------------------------------------

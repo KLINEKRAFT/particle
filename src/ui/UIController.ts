@@ -26,6 +26,8 @@ export interface UICallbacks {
   onPause: () => void;
   onFullscreen: () => void;
   onLaunchDual: () => void;
+  onSpanDual: () => void;
+  onSpanExit: () => void;
   onMirror: () => void;
   onCopyLink: () => void;
 }
@@ -508,16 +510,20 @@ export class UIController {
   private groupDisplay(): HTMLElement {
     const info = document.createElement('p');
     info.className = 'note';
-    info.textContent = 'Dual-window mode opens synchronized windows across extended displays where the Window Management API is supported. Each window has its own GPU context.';
-    const dual = buttonRow([
-      { label: 'Launch dual display', onClick: () => this.cb.onLaunchDual(), title: 'Open synchronized windows on all screens' },
+    info.textContent = 'Span 2 monitors works in any browser: this window becomes the left half and a second window the right half of one continuous scene — drag it to your 2nd monitor and fullscreen both (F). Auto-launch across all screens needs Chrome/Edge (Window Management API). Each window has its own GPU context.';
+    const span = buttonRow([
+      { label: 'Span 2 monitors', onClick: () => this.cb.onSpanDual(), title: 'Manual span — works everywhere' },
     ]);
-    dual.classList.add('primary-buttons');
+    span.classList.add('primary-buttons');
+    const spanCtl = buttonRow([
+      { label: 'Auto-launch (Chrome)', onClick: () => this.cb.onLaunchDual(), title: 'Auto-place a window on every screen (Chrome/Edge)' },
+      { label: 'Stop span', onClick: () => this.cb.onSpanExit() },
+    ]);
     const fallbacks = buttonRow([
       { label: 'Open mirror window', onClick: () => this.cb.onMirror() },
       { label: 'Copy session link', onClick: () => this.cb.onCopyLink() },
     ]);
-    return group('Display', false, [info, dual, fallbacks]);
+    return group('Display', false, [info, span, spanCtl, fallbacks]);
   }
 
   private groupPerformance(): HTMLElement {
