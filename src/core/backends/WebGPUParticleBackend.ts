@@ -9,7 +9,7 @@ import { SpriteNodeMaterial, type WebGPURenderer } from 'three/webgpu';
 import {
   Fn, instancedArray, instanceIndex, uniform, vec3, float, uv, If,
   normalize, length, cross, mix, clamp, smoothstep, sin, cos, exp, pow, dot,
-  max, fract, mx_noise_vec3, mx_rgbtohsv, mx_hsvtorgb, abs, step, cameraPosition,
+  max, fract, mx_noise_vec3, mx_rgbtohsv, mx_hsvtorgb, abs, step, cameraPosition, any,
 } from 'three/tsl';
 import type { ParticleBackend } from './ParticleBackend';
 import type { ParticleTarget, SimUniforms } from '../../types';
@@ -198,6 +198,18 @@ export class WebGPUParticleBackend implements ParticleBackend {
       vel.addAssign(force.mul(u.dt));
       vel.mulAssign(u.damping);
       pos.addAssign(vel.mul(u.dt).mul(u.speed));
+
+      // Sanitize: if a particle's state ever becomes non-finite (NaN) or blows
+      // up, reset it to its target. Without this, a single bad sprite renders as
+      // a full-length streak (the "cross" artifact) and accumulates over edits.
+      const bad = any(pos.notEqual(pos)).or(any(abs(pos).greaterThan(1e4)));
+      If(bad, () => {
+        pos.assign(tgt);
+        vel.assign(vec3(0, 0, 0));
+      });
+      // Hard bounds so nothing can stretch across the screen even transiently.
+      pos.assign(clamp(pos, vec3(-40, -40, -40), vec3(40, 40, 40)));
+      vel.assign(clamp(vel, vec3(-60, -60, -60), vec3(60, 60, 60)));
     })().compute(count);
 
     // ---- render material (instanced sprites) ----
@@ -208,8 +220,9 @@ export class WebGPUParticleBackend implements ParticleBackend {
     // world size (perspective naturally shrinks distant particles). When OFF we
     // scale with camera distance to hold an (approximately) constant screen size.
     const worldPos = positionBuffer.toAttribute();
-    const camDist = max(length(cameraPosition.sub(worldPos)), 0.001);
-    material.scaleNode = u.size.mul(mix(camDist.mul(0.35), float(1.0), u.sizeAtten));
+    const camDist = clamp(length(cameraPosition.sub(worldPos)), 0.001, 200.0);
+    const rawScale = u.size.mul(mix(camDist.mul(0.35), float(1.0), u.sizeAtten));
+    material.scaleNode = clamp(rawScale, 0.0, u.size.mul(4.0)); // never a giant sprite
 
     // color
     const baseColor = this.buildColorNode();

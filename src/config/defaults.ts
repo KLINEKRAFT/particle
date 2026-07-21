@@ -157,7 +157,10 @@ export function defaultSettings(): AppSettings {
     },
     performance: {
       renderScale: 1,
-      pixelRatioCap: 2,
+      // Cap DPR at 1.5: on 4K/5K Retina displays a 2x framebuffer is enormous
+      // for additive particles; 1.5 keeps it crisp while roughly halving pixel
+      // work. Adaptive quality can still lower render scale under load.
+      pixelRatioCap: 1.5,
       adaptiveQuality: true,
       targetFps: 50,
       autoReduce: false,

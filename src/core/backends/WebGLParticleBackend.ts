@@ -60,6 +60,10 @@ void main(){
   vec3 pos = texture2D(texturePosition, uv).xyz;
   vec3 vel = texture2D(textureVelocity, uv).xyz;
   pos += vel * uDt * uSpeed;
+  // Scrub non-finite / runaway positions so a bad particle can't streak.
+  bvec3 finite = lessThan(abs(pos), vec3(1e4));
+  pos = vec3(finite.x ? pos.x : 0.0, finite.y ? pos.y : 0.0, finite.z ? pos.z : 0.0);
+  pos = clamp(pos, vec3(-40.0), vec3(40.0));
   gl_FragColor = vec4(pos, 1.0);
 }
 `;

@@ -3,9 +3,10 @@ import { builtinPresets } from '../presets/builtin';
 import { clone, defaultSettings } from '../config/defaults';
 
 const STORAGE_KEY = 'particle-studio:presets:v1';
-// Bumped to v2 so previously-saved high particle counts (which could hang a GPU)
-// are discarded and users start from the new, safe 20K default.
-const SETTINGS_KEY = 'particle-studio:settings:v2';
+// Bumped when the starting-count logic changes so returning users pick up the
+// new hardware-based default instead of a stale saved value. v3: fresh sessions
+// now start at the device's recommended count (e.g. ~250K on Apple Silicon).
+const SETTINGS_KEY = 'particle-studio:settings:v3';
 
 // ============================================================================
 // PresetManager — built-in presets plus user presets in LocalStorage, with

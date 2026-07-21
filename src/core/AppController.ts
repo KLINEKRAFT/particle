@@ -72,9 +72,13 @@ export class AppController {
     this.uiRoot = uiRoot;
     this.secondary = MultiScreenManager.parseSecondary();
     this.isSecondary = this.ms.isSecondary();
-    this.settings = this.presets.loadCurrentSettings() || defaultSettings();
+    const saved = this.presets.loadCurrentSettings();
+    this.freshSession = !saved;
+    this.settings = saved || defaultSettings();
     if (this.isSecondary) this.settings = defaultSettings();
   }
+
+  private freshSession = false;
 
   async init(): Promise<void> {
     this.caps = await detectCapabilities();
@@ -83,9 +87,16 @@ export class AppController {
       return;
     }
 
-    // Cap starting count to what the device can likely handle (primary only).
-    if (!this.isSecondary && this.settings.particles.count > this.caps.maxRecommendedCount) {
-      this.settings.particles.count = this.caps.recommendedCount;
+    // Choose the starting particle count from the detected hardware. A fresh
+    // session (no saved settings) starts at the device's recommended count so
+    // capable GPUs (e.g. Apple Silicon) get a rich scene and weak ones stay
+    // smooth. Returning users keep their choice, only clamped to the max.
+    if (!this.isSecondary) {
+      if (this.freshSession) {
+        this.settings.particles.count = this.caps.recommendedCount;
+      } else if (this.settings.particles.count > this.caps.maxRecommendedCount) {
+        this.settings.particles.count = this.caps.recommendedCount;
+      }
     }
 
     // Boot the renderer + engine + camera, verifying the first frame renders.
