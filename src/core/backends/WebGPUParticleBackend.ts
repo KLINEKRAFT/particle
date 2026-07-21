@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { SpriteNodeMaterial, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, instancedArray, instanceIndex, uniform, vec3, float, uv, If,
+  Fn, instancedArray, instanceIndex, uniform, vec3, vec4, float, uv, If,
   normalize, length, cross, mix, clamp, smoothstep, sin, cos, exp, pow, dot,
   max, fract, mx_noise_vec3, mx_rgbtohsv, mx_hsvtorgb, abs, step, cameraPosition, any,
 } from 'three/tsl';
@@ -105,10 +105,15 @@ export class WebGPUParticleBackend implements ParticleBackend {
     this.disposeGpu();
     this.count = count;
 
-    const positionBuffer = instancedArray(count, 'vec3');
-    const velocityBuffer = instancedArray(count, 'vec3');
-    const targetBuffer = instancedArray(count, 'vec3');
-    const colorBuffer = instancedArray(count, 'vec3');
+    // vec4 (not vec3): WGSL pads vec3 storage elements to 16 bytes, and the
+    // CPU→GPU re-upload of a vec3 storage buffer (which we do for targets on
+    // every shape change) can misalign a subset of elements into garbage — those
+    // corrupted particles then render as full-screen streaks (the "cross"). vec4
+    // is naturally 16-byte aligned, so the re-upload is always correct.
+    const positionBuffer = instancedArray(count, 'vec4');
+    const velocityBuffer = instancedArray(count, 'vec4');
+    const targetBuffer = instancedArray(count, 'vec4');
+    const colorBuffer = instancedArray(count, 'vec4');
     this.positionBuffer = positionBuffer;
     this.velocityBuffer = velocityBuffer;
     this.targetBuffer = targetBuffer;
@@ -122,16 +127,16 @@ export class WebGPUParticleBackend implements ParticleBackend {
 
     // ---- init compute: copy target -> position, zero velocity ----
     this.computeInit = Fn(() => {
-      const pos = positionBuffer.element(instanceIndex);
-      const vel = velocityBuffer.element(instanceIndex);
-      pos.assign(targetBuffer.element(instanceIndex));
-      vel.assign(vec3(0, 0, 0));
+      const t = targetBuffer.element(instanceIndex).xyz;
+      positionBuffer.element(instanceIndex).assign(vec4(t, 1.0));
+      velocityBuffer.element(instanceIndex).assign(vec4(0, 0, 0, 0));
     })().compute(count);
 
     // ---- kick compute: apply a morph impulse to velocity ----
     this.computeKick = Fn(() => {
-      const pos = positionBuffer.element(instanceIndex).toVar();
-      const vel = velocityBuffer.element(instanceIndex);
+      const pos = positionBuffer.element(instanceIndex).xyz.toVar();
+      const velEl = velocityBuffer.element(instanceIndex);
+      const vel = velEl.xyz.toVar();
       const n = mx_noise_vec3(pos.mul(11.0).add(u.seed));
       const rndDir = normalize(n.add(1e-5));
       const explodeDir = normalize(pos.add(1e-5));
@@ -145,13 +150,16 @@ export class WebGPUParticleBackend implements ParticleBackend {
         dir.assign(spiralDir);
       });
       vel.addAssign(dir.mul(u.kickStrength).mul(n.x.mul(0.5).add(0.75)));
+      velEl.assign(vec4(vel, 0.0));
     })().compute(count);
 
     // ---- main integration compute ----
     this.computeUpdate = Fn(() => {
-      const pos = positionBuffer.element(instanceIndex);
-      const vel = velocityBuffer.element(instanceIndex);
-      const tgt = targetBuffer.element(instanceIndex);
+      const posEl = positionBuffer.element(instanceIndex);
+      const velEl = velocityBuffer.element(instanceIndex);
+      const pos = posEl.xyz.toVar();
+      const vel = velEl.xyz.toVar();
+      const tgt = targetBuffer.element(instanceIndex).xyz;
 
       const force = tgt.sub(pos).mul(u.returnForce).toVar();
 
@@ -199,27 +207,29 @@ export class WebGPUParticleBackend implements ParticleBackend {
       vel.mulAssign(u.damping);
       pos.addAssign(vel.mul(u.dt).mul(u.speed));
 
-      // Sanitize: if a particle's state ever becomes non-finite (NaN) or blows
-      // up, reset it to its target. Without this, a single bad sprite renders as
-      // a full-length streak (the "cross" artifact) and accumulates over edits.
+      // Sanitize: if a particle's state is ever non-finite (NaN) or blows up,
+      // reset it to the origin (always finite) so it can't render as a streak.
       const bad = any(pos.notEqual(pos)).or(any(abs(pos).greaterThan(1e4)));
       If(bad, () => {
-        pos.assign(tgt);
+        pos.assign(vec3(0, 0, 0));
         vel.assign(vec3(0, 0, 0));
       });
       // Hard bounds so nothing can stretch across the screen even transiently.
       pos.assign(clamp(pos, vec3(-40, -40, -40), vec3(40, 40, 40)));
       vel.assign(clamp(vel, vec3(-60, -60, -60), vec3(60, 60, 60)));
+
+      posEl.assign(vec4(pos, 1.0));
+      velEl.assign(vec4(vel, 0.0));
     })().compute(count);
 
     // ---- render material (instanced sprites) ----
     const material = new SpriteNodeMaterial();
-    material.positionNode = positionBuffer.toAttribute();
+    material.positionNode = positionBuffer.toAttribute().xyz;
 
     // size: world-space scale. When size attenuation is ON we keep a constant
     // world size (perspective naturally shrinks distant particles). When OFF we
     // scale with camera distance to hold an (approximately) constant screen size.
-    const worldPos = positionBuffer.toAttribute();
+    const worldPos = positionBuffer.toAttribute().xyz;
     const camDist = clamp(length(cameraPosition.sub(worldPos)), 0.001, 200.0);
     const rawScale = u.size.mul(mix(camDist.mul(0.35), float(1.0), u.sizeAtten));
     material.scaleNode = clamp(rawScale, 0.0, u.size.mul(4.0)); // never a giant sprite
@@ -272,9 +282,9 @@ export class WebGPUParticleBackend implements ParticleBackend {
 
   private buildColorNode() {
     const u = this.u;
-    const pos = this.positionBuffer!.toAttribute();
-    const vel = this.velocityBuffer!.toAttribute();
-    const img = this.colorBuffer!.toAttribute();
+    const pos = this.positionBuffer!.toAttribute().xyz;
+    const vel = this.velocityBuffer!.toAttribute().xyz;
+    const img = this.colorBuffer!.toAttribute().xyz;
     const boundR = u.boundR;
 
     const gr = u.gradientRotation.mul(Math.PI / 180);
@@ -339,14 +349,26 @@ export class WebGPUParticleBackend implements ParticleBackend {
   setTargets(target: ParticleTarget, snap: boolean): void {
     if (!this.targetArray || !this.colorArray || !this.targetBuffer || !this.colorBuffer) return;
     const n = Math.min(target.count, this.count);
-    this.targetArray.set(target.positions.subarray(0, n * 3), 0);
-    this.colorArray.set(target.colors.subarray(0, n * 3), 0);
+    const tData = this.targetArray;
+    const cData = this.colorArray;
+    // Buffers are vec4 (stride 4). Pack xyz + w.
+    for (let i = 0; i < n; i++) {
+      tData[i * 4] = target.positions[i * 3];
+      tData[i * 4 + 1] = target.positions[i * 3 + 1];
+      tData[i * 4 + 2] = target.positions[i * 3 + 2];
+      tData[i * 4 + 3] = 1;
+      cData[i * 4] = target.colors[i * 3];
+      cData[i * 4 + 1] = target.colors[i * 3 + 1];
+      cData[i * 4 + 2] = target.colors[i * 3 + 2];
+      cData[i * 4 + 3] = 1;
+    }
     // Park surplus particles on the last valid point.
     for (let i = n; i < this.count; i++) {
       const src = n > 0 ? n - 1 : 0;
-      this.targetArray[i * 3] = target.positions[src * 3] || 0;
-      this.targetArray[i * 3 + 1] = target.positions[src * 3 + 1] || 0;
-      this.targetArray[i * 3 + 2] = target.positions[src * 3 + 2] || 0;
+      tData[i * 4] = target.positions[src * 3] || 0;
+      tData[i * 4 + 1] = target.positions[src * 3 + 1] || 0;
+      tData[i * 4 + 2] = target.positions[src * 3 + 2] || 0;
+      tData[i * 4 + 3] = 1;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.targetBuffer as any).value.needsUpdate = true;
