@@ -83,50 +83,82 @@ export class AppController {
       return;
     }
 
-    this.rm = new RendererManager(this.canvas);
-    let info;
-    try {
-      info = await this.rm.init(this.caps.webgpu);
-    } catch (err) {
-      this.fatal('Renderer initialization failed: ' + (err instanceof Error ? err.message : String(err)));
-      return;
-    }
-    this.adapterInfo = info.adapterInfo;
-
-    this.rm.setBackground(this.settings.color.background);
-    this.engine = new ParticleEngine(this.rm);
-    this.camera = new CameraController(this.canvas, this.settings.camera, !this.isSecondary);
-    this.perf = new PerformanceManager(this.rm.renderer, this.rm.type);
-
     // Cap starting count to what the device can likely handle (primary only).
     if (!this.isSecondary && this.settings.particles.count > this.caps.maxRecommendedCount) {
       this.settings.particles.count = this.caps.recommendedCount;
     }
 
-    if (this.isSecondary) {
-      this.setupSecondary();
-    } else {
-      this.setupPrimaryUI();
+    // Boot the renderer + engine + camera, verifying the first frame renders.
+    // If WebGPU is chosen but fails at runtime, transparently fall back to WebGL2
+    // on a fresh canvas (a canvas context type cannot be changed in place).
+    let booted = await this.bootGraphics(this.caps.webgpu);
+    if (!booted && this.caps.webgpu && this.caps.webgl2) {
+      console.warn('WebGPU render path failed; falling back to WebGL2.');
+      booted = await this.bootGraphics(false);
+      if (booted) this.ui?.showToast('WebGPU was unavailable on this system — using the WebGL2 renderer.', 'info', 5000);
+    }
+    if (!booted) {
+      this.fatal('The graphics backend failed to start. Please try a different browser or update your GPU drivers.');
+      return;
     }
 
-    this.onResize();
     window.addEventListener('resize', this.boundResize);
     window.addEventListener('keydown', this.boundKey);
     document.addEventListener('visibilitychange', this.boundVisibility);
-    this.setupCanvasInput();
 
-    // initial allocation + generation
-    this.engine.allocate(this.settings.particles.count);
-    this.rm.configureBloom(this.settings.particles.bloom, this.settings.particles.bloomStrength, this.camera.active);
-    await this.doGenerate(true);
-    this.camera.frame(this.engine.getBoundRadius());
-
-    if (this.isSecondary) {
-      this.ms.post({ t: 'hello' });
-    }
+    if (this.isSecondary) this.ms.post({ t: 'hello' });
 
     this.lastTime = performance.now();
     this.loop();
+  }
+
+  /**
+   * (Re)build the renderer, engine and camera and verify one frame renders.
+   * Returns false if the graphics backend fails (so the caller can retry with
+   * WebGL2). On a retry a fresh canvas replaces the old one.
+   */
+  private async bootGraphics(preferWebGPU: boolean): Promise<boolean> {
+    // Tear down any previous attempt.
+    if (this.rm) {
+      this.engine?.dispose();
+      this.camera?.dispose();
+      this.rm.dispose();
+      const fresh = document.createElement('canvas');
+      fresh.id = 'scene';
+      fresh.setAttribute('aria-label', '3D particle visualization');
+      this.canvas.replaceWith(fresh);
+      this.canvas = fresh;
+    }
+
+    try {
+      this.rm = new RendererManager(this.canvas);
+      const info = await this.rm.init(preferWebGPU);
+      this.adapterInfo = info.adapterInfo;
+      this.rm.setBackground(this.settings.color.background);
+      this.engine = new ParticleEngine(this.rm);
+      this.camera = new CameraController(this.canvas, this.settings.camera, !this.isSecondary);
+      this.perf = new PerformanceManager(this.rm.renderer, this.rm.type);
+
+      if (this.isSecondary) this.setupSecondary();
+      else if (!this.ui) this.setupPrimaryUI();
+
+      this.setupCanvasInput();
+      this.onResize();
+
+      this.engine.allocate(this.settings.particles.count);
+      this.rm.configureBloom(this.settings.particles.bloom, this.settings.particles.bloomStrength, this.camera.active);
+      await this.doGenerate(true);
+      this.camera.frame(this.engine.getBoundRadius());
+
+      // Trial frame — surfaces backend-specific render failures up front.
+      this.engine.applySettings(this.settings, 0);
+      this.engine.step(0.016, 0);
+      this.rm.render(this.camera.active);
+      return true;
+    } catch (err) {
+      console.error(`Graphics boot failed (preferWebGPU=${preferWebGPU})`, err);
+      return false;
+    }
   }
 
   // ---- Primary UI ----------------------------------------------------------
