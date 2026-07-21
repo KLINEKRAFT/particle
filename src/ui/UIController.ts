@@ -47,6 +47,10 @@ export class UIController {
   private fileInput!: HTMLInputElement;
   private depthInput!: HTMLInputElement;
   private fontInput!: HTMLInputElement;
+  private shapeSections: HTMLElement[] = [];
+  private shapeGroup!: HTMLElement;
+  private imageGroup!: HTMLElement;
+  private textGroup!: HTMLElement;
 
   constructor(root: HTMLElement, settings: AppSettings, defaults: AppSettings, cb: UICallbacks) {
     this.root = root;
@@ -57,12 +61,15 @@ export class UIController {
 
   private build(): void {
     clearRefreshers();
+    this.shapeSections = [];
     this.buildToolbar();
     this.buildPanel();
     this.buildPerfHud();
     this.buildTimeline();
     this.buildToast();
     this.buildHiddenInputs();
+    this.updateSourceVisibility();
+    this.updateShapeVisibility();
   }
 
   // ---- Toolbar -------------------------------------------------------------
@@ -116,9 +123,12 @@ export class UIController {
     this.panel = panel;
 
     panel.appendChild(this.groupSource());
-    panel.appendChild(this.groupShape());
-    panel.appendChild(this.groupImage());
-    panel.appendChild(this.groupText());
+    this.shapeGroup = this.groupShape();
+    this.imageGroup = this.groupImage();
+    this.textGroup = this.groupText();
+    panel.appendChild(this.shapeGroup);
+    panel.appendChild(this.imageGroup);
+    panel.appendChild(this.textGroup);
     panel.appendChild(this.groupParticles());
     panel.appendChild(this.groupMotion());
     panel.appendChild(this.groupColor());
@@ -143,7 +153,10 @@ export class UIController {
     });
     // Override source select to route through onSourceChange
     const sel = src.querySelector('select')!;
-    sel.addEventListener('change', () => this.cb.onSourceChange(sel.value as SourceKind));
+    sel.addEventListener('change', () => {
+      this.cb.onSourceChange(sel.value as SourceKind);
+      this.updateSourceVisibility();
+    });
 
     const apply = buttonRow([
       { label: 'Apply / Generate', onClick: () => this.cb.onGenerate(), title: 'Regenerate the current source' },
@@ -162,48 +175,80 @@ export class UIController {
         { value: 'knot', label: 'Knot' }, { value: 'lorenz', label: 'Lorenz attractor' },
       ],
     });
+    // Only the active shape's parameters are shown (see updateShapeVisibility).
+    kind.querySelector('select')!.addEventListener('change', () => this.updateShapeVisibility());
+
+    const section = (shapeKind: string, controls: HTMLElement[]): HTMLElement => {
+      const el = document.createElement('div');
+      el.className = 'shape-sub';
+      el.dataset.shape = shapeKind;
+      controls.forEach((x) => el.appendChild(x));
+      this.shapeSections.push(el);
+      return el;
+    };
+
     const children = [
       kind,
-      sub('Cube'),
-      slider(c, { label: 'Width', path: 'shape.cube.width', min: 0.2, max: 4, step: 0.05, regen: true }),
-      slider(c, { label: 'Height', path: 'shape.cube.height', min: 0.2, max: 4, step: 0.05, regen: true }),
-      slider(c, { label: 'Depth', path: 'shape.cube.depth', min: 0.2, max: 4, step: 0.05, regen: true }),
-      toggle(c, { label: 'Filled volume', path: 'shape.cube.filled', regen: true }),
-      slider(c, { label: 'Edge concentration', path: 'shape.cube.edgeConcentration', min: 0, max: 1, step: 0.01, regen: true }),
-      slider(c, { label: 'Corner rounding', path: 'shape.cube.cornerRadius', min: 0, max: 0.5, step: 0.01, regen: true }),
-      sub('Sphere'),
-      slider(c, { label: 'Radius', path: 'shape.sphere.radius', min: 0.3, max: 3, step: 0.05, regen: true }),
-      toggle(c, { label: 'Filled volume', path: 'shape.sphere.filled', regen: true }),
-      toggle(c, { label: 'Hemisphere', path: 'shape.sphere.hemisphere', regen: true }),
-      toggle(c, { label: 'Even distribution', path: 'shape.sphere.latitudeCorrection', regen: true, tooltip: 'Avoid pole bunching' }),
-      sub('Helix'),
-      slider(c, { label: 'Radius', path: 'shape.helix.radius', min: 0.2, max: 2.5, step: 0.05, regen: true }),
-      slider(c, { label: 'Height', path: 'shape.helix.height', min: 0.5, max: 6, step: 0.1, regen: true }),
-      slider(c, { label: 'Turns', path: 'shape.helix.turns', min: 1, max: 20, step: 1, regen: true }),
-      slider(c, { label: 'Pitch', path: 'shape.helix.pitch', min: 0.2, max: 3, step: 0.05, regen: true }),
-      slider(c, { label: 'Strand thickness', path: 'shape.helix.strandThickness', min: 0, max: 0.4, step: 0.01, regen: true }),
-      toggle(c, { label: 'Double helix', path: 'shape.helix.doubleHelix', regen: true }),
-      sub('Torus'),
-      slider(c, { label: 'Major radius', path: 'shape.torus.majorRadius', min: 0.4, max: 2.5, step: 0.05, regen: true }),
-      slider(c, { label: 'Minor radius', path: 'shape.torus.minorRadius', min: 0.1, max: 1.2, step: 0.05, regen: true }),
-      slider(c, { label: 'Tube thickness', path: 'shape.torus.tubeThickness', min: 0.05, max: 1, step: 0.05, regen: true }),
-      toggle(c, { label: 'Filled volume', path: 'shape.torus.filled', regen: true }),
-      sub('Knot'),
-      slider(c, { label: 'P', path: 'shape.knot.p', min: 1, max: 8, step: 1, regen: true }),
-      slider(c, { label: 'Q', path: 'shape.knot.q', min: 1, max: 8, step: 1, regen: true }),
-      slider(c, { label: 'Major radius', path: 'shape.knot.majorRadius', min: 0.4, max: 2, step: 0.05, regen: true }),
-      slider(c, { label: 'Tube radius', path: 'shape.knot.tubeRadius', min: 0.05, max: 1, step: 0.05, regen: true }),
-      slider(c, { label: 'Twist', path: 'shape.knot.twist', min: 0, max: 6, step: 0.1, regen: true }),
-      slider(c, { label: 'Thickness', path: 'shape.knot.thickness', min: 0.02, max: 1, step: 0.02, regen: true }),
-      sub('Lorenz attractor'),
-      slider(c, { label: 'Sigma', path: 'shape.lorenz.sigma', min: 1, max: 30, step: 0.1, regen: true }),
-      slider(c, { label: 'Rho', path: 'shape.lorenz.rho', min: 1, max: 60, step: 0.1, regen: true }),
-      slider(c, { label: 'Beta', path: 'shape.lorenz.beta', min: 0.5, max: 6, step: 0.01, regen: true }),
-      slider(c, { label: 'Integration step', path: 'shape.lorenz.step', min: 0.001, max: 0.02, step: 0.001, regen: true }),
-      slider(c, { label: 'Scale', path: 'shape.lorenz.scale', min: 0.01, max: 0.15, step: 0.005, regen: true }),
-      slider(c, { label: 'Jitter', path: 'shape.lorenz.jitter', min: 0, max: 0.2, step: 0.005, regen: true }),
+      section('cube', [
+        slider(c, { label: 'Width', path: 'shape.cube.width', min: 0.2, max: 4, step: 0.05, regen: true }),
+        slider(c, { label: 'Height', path: 'shape.cube.height', min: 0.2, max: 4, step: 0.05, regen: true }),
+        slider(c, { label: 'Depth', path: 'shape.cube.depth', min: 0.2, max: 4, step: 0.05, regen: true }),
+        toggle(c, { label: 'Filled volume', path: 'shape.cube.filled', regen: true }),
+        slider(c, { label: 'Edge concentration', path: 'shape.cube.edgeConcentration', min: 0, max: 1, step: 0.01, regen: true }),
+        slider(c, { label: 'Corner rounding', path: 'shape.cube.cornerRadius', min: 0, max: 0.5, step: 0.01, regen: true }),
+      ]),
+      section('sphere', [
+        slider(c, { label: 'Radius', path: 'shape.sphere.radius', min: 0.3, max: 3, step: 0.05, regen: true }),
+        toggle(c, { label: 'Filled volume', path: 'shape.sphere.filled', regen: true }),
+        toggle(c, { label: 'Hemisphere', path: 'shape.sphere.hemisphere', regen: true }),
+        toggle(c, { label: 'Even distribution', path: 'shape.sphere.latitudeCorrection', regen: true, tooltip: 'Avoid pole bunching' }),
+      ]),
+      section('helix', [
+        slider(c, { label: 'Radius', path: 'shape.helix.radius', min: 0.2, max: 2.5, step: 0.05, regen: true }),
+        slider(c, { label: 'Height', path: 'shape.helix.height', min: 0.5, max: 6, step: 0.1, regen: true }),
+        slider(c, { label: 'Turns', path: 'shape.helix.turns', min: 1, max: 20, step: 1, regen: true }),
+        slider(c, { label: 'Pitch', path: 'shape.helix.pitch', min: 0.2, max: 3, step: 0.05, regen: true }),
+        slider(c, { label: 'Strand thickness', path: 'shape.helix.strandThickness', min: 0, max: 0.4, step: 0.01, regen: true }),
+        toggle(c, { label: 'Double helix', path: 'shape.helix.doubleHelix', regen: true }),
+      ]),
+      section('torus', [
+        slider(c, { label: 'Major radius', path: 'shape.torus.majorRadius', min: 0.4, max: 2.5, step: 0.05, regen: true }),
+        slider(c, { label: 'Minor radius', path: 'shape.torus.minorRadius', min: 0.1, max: 1.2, step: 0.05, regen: true }),
+        slider(c, { label: 'Tube thickness', path: 'shape.torus.tubeThickness', min: 0.05, max: 1, step: 0.05, regen: true }),
+        toggle(c, { label: 'Filled volume', path: 'shape.torus.filled', regen: true }),
+      ]),
+      section('knot', [
+        slider(c, { label: 'P', path: 'shape.knot.p', min: 1, max: 8, step: 1, regen: true }),
+        slider(c, { label: 'Q', path: 'shape.knot.q', min: 1, max: 8, step: 1, regen: true }),
+        slider(c, { label: 'Major radius', path: 'shape.knot.majorRadius', min: 0.4, max: 2, step: 0.05, regen: true }),
+        slider(c, { label: 'Tube radius', path: 'shape.knot.tubeRadius', min: 0.05, max: 1, step: 0.05, regen: true }),
+        slider(c, { label: 'Twist', path: 'shape.knot.twist', min: 0, max: 6, step: 0.1, regen: true }),
+        slider(c, { label: 'Thickness', path: 'shape.knot.thickness', min: 0.02, max: 1, step: 0.02, regen: true }),
+      ]),
+      section('lorenz', [
+        slider(c, { label: 'Sigma', path: 'shape.lorenz.sigma', min: 1, max: 30, step: 0.1, regen: true }),
+        slider(c, { label: 'Rho', path: 'shape.lorenz.rho', min: 1, max: 60, step: 0.1, regen: true }),
+        slider(c, { label: 'Beta', path: 'shape.lorenz.beta', min: 0.5, max: 6, step: 0.01, regen: true }),
+        slider(c, { label: 'Integration step', path: 'shape.lorenz.step', min: 0.001, max: 0.02, step: 0.001, regen: true }),
+        slider(c, { label: 'Scale', path: 'shape.lorenz.scale', min: 0.01, max: 0.15, step: 0.005, regen: true }),
+        slider(c, { label: 'Jitter', path: 'shape.lorenz.jitter', min: 0, max: 0.2, step: 0.005, regen: true }),
+      ]),
     ];
     return group('Shape', true, children);
+  }
+
+  private updateShapeVisibility(): void {
+    const active = getPath(this.ctx.settings, 'shape.kind') as string;
+    for (const el of this.shapeSections) {
+      el.style.display = el.dataset.shape === active ? '' : 'none';
+    }
+  }
+
+  private updateSourceVisibility(): void {
+    const src = getPath(this.ctx.settings, 'source') as string;
+    if (this.shapeGroup) this.shapeGroup.style.display = src === 'shape' ? '' : 'none';
+    if (this.imageGroup) this.imageGroup.style.display = src === 'image' ? '' : 'none';
+    if (this.textGroup) this.textGroup.style.display = src === 'text' ? '' : 'none';
   }
 
   private groupImage(): HTMLElement {
@@ -640,16 +685,11 @@ export class UIController {
   refresh(): void {
     refreshAllControls();
     this.refreshCountFns?.forEach((f) => f());
+    this.updateSourceVisibility();
+    this.updateShapeVisibility();
   }
 
   setInteractive(_on: boolean): void {
     /* presentation toggle handled via body class in AppController */
   }
-}
-
-function sub(title: string): HTMLElement {
-  const el = document.createElement('div');
-  el.className = 'subhead';
-  el.textContent = title;
-  return el;
 }
