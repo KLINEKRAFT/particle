@@ -158,6 +158,16 @@ export class ParticleEngine {
     this.backend.step(dt, elapsed);
   }
 
+  /** Rigid turntable rotation of the whole particle cloud (degrees/sec). */
+  spin(dt: number, sx: number, sy: number, sz: number): void {
+    if (sx === 0 && sy === 0 && sz === 0) return;
+    const o = this.backend.getObject();
+    const k = (Math.PI / 180) * dt;
+    o.rotation.x += sx * k;
+    o.rotation.y += sy * k;
+    o.rotation.z += sz * k;
+  }
+
   dispose(): void {
     this.backend.dispose();
   }

@@ -476,6 +476,11 @@ export class UIController {
   private groupMotion(): HTMLElement {
     const c = this.ctx;
     const children = [
+      sub('Rotate (turntable °/sec)'),
+      slider(c, { label: 'Spin X', path: 'motion.spinX', min: -180, max: 180, step: 1, format: (v) => v.toFixed(0) }),
+      slider(c, { label: 'Spin Y', path: 'motion.spinY', min: -180, max: 180, step: 1, tooltip: 'Rotate the whole 3D form around the vertical axis', format: (v) => v.toFixed(0) }),
+      slider(c, { label: 'Spin Z', path: 'motion.spinZ', min: -180, max: 180, step: 1, format: (v) => v.toFixed(0) }),
+      sub('Field motion'),
       toggle(c, { label: 'Enable motion', path: 'motion.enabled' }),
       select(c, { label: 'Mode', path: 'motion.mode', options: [
         { value: 'none', label: 'None' }, { value: 'curl', label: 'Curl noise' },
@@ -737,4 +742,11 @@ export class UIController {
   setInteractive(_on: boolean): void {
     /* presentation toggle handled via body class in AppController */
   }
+}
+
+function sub(title: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'subhead';
+  el.textContent = title;
+  return el;
 }
