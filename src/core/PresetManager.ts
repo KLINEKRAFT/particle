@@ -3,7 +3,9 @@ import { builtinPresets } from '../presets/builtin';
 import { clone, defaultSettings } from '../config/defaults';
 
 const STORAGE_KEY = 'particle-studio:presets:v1';
-const SETTINGS_KEY = 'particle-studio:settings:v1';
+// Bumped to v2 so previously-saved high particle counts (which could hang a GPU)
+// are discarded and users start from the new, safe 20K default.
+const SETTINGS_KEY = 'particle-studio:settings:v2';
 
 // ============================================================================
 // PresetManager — built-in presets plus user presets in LocalStorage, with

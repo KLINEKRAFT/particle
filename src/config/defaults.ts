@@ -95,7 +95,7 @@ export function defaultSettings(): AppSettings {
       edgePriority: 0.4,
     },
     particles: {
-      count: 150000,
+      count: 20000,
       style: 'soft',
       size: 1.15,
       opacity: 0.4,

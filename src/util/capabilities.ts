@@ -47,27 +47,28 @@ export async function detectCapabilities(): Promise<BackendCapabilities> {
     webgl2 = false;
   }
 
-  // Rough recommendation heuristic.
+  // Conservative recommendation heuristic — start low so mid/integrated GPUs
+  // stay smooth; users can raise the count if their hardware handles it.
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-  let recommended = 150000;
-  let maxRecommended = 1000000;
+  let recommended = 40000;
+  let maxRecommended = 250000;
   if (isMobile) {
-    recommended = 30000;
-    maxRecommended = 150000;
+    recommended = 12000;
+    maxRecommended = 60000;
   } else if (webgpu && cores >= 8 && deviceMemoryGb >= 8) {
-    recommended = 300000;
+    recommended = 120000;
     maxRecommended = 1000000;
   } else if (webgpu) {
-    recommended = 200000;
-    maxRecommended = 1000000;
-  } else if (webgl2 && cores >= 8) {
-    recommended = 150000;
-    maxRecommended = 500000;
-  } else if (webgl2) {
     recommended = 80000;
-    maxRecommended = 250000;
+    maxRecommended = 600000;
+  } else if (webgl2 && cores >= 8) {
+    recommended = 60000;
+    maxRecommended = 300000;
+  } else if (webgl2) {
+    recommended = 40000;
+    maxRecommended = 150000;
   } else {
-    recommended = 20000;
+    recommended = 15000;
     maxRecommended = 50000;
   }
 
