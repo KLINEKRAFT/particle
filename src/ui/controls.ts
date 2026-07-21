@@ -92,7 +92,13 @@ export function slider(ctx: ControlContext, o: SliderOpts): HTMLElement {
   input.addEventListener('input', () => {
     setPath(ctx.settings, o.path, parseFloat(input.value));
     val.textContent = fmt(parseFloat(input.value));
-    ctx.onChange(o.path, !!o.regen);
+    // Live, cheap updates (colour/size/motion → GPU uniforms) apply while
+    // dragging. Regenerating controls (shape/image/text params, count) would
+    // rebuild millions of points per pixel, so those fire once on release.
+    if (!o.regen) ctx.onChange(o.path, false);
+  });
+  input.addEventListener('change', () => {
+    if (o.regen) ctx.onChange(o.path, true);
   });
   reset.addEventListener('click', () => {
     const d = getPath(ctx.defaults, o.path) as number;
