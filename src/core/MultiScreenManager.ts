@@ -37,6 +37,8 @@ export interface SecondaryConfig {
   w: number;
   h: number;
   mirror: boolean;
+  spanIndex: number; // -1 when not in manual-span mode
+  spanCount: number; // 0 when not in manual-span mode
 }
 
 export interface MultiScreenCapabilities {
@@ -87,7 +89,23 @@ export class MultiScreenManager {
       w: num('w', window.innerWidth),
       h: num('h', window.innerHeight),
       mirror,
+      spanIndex: p.has('seg') ? num('seg', 0) : -1,
+      spanCount: num('segs', 0),
     };
+  }
+
+  /**
+   * Open a synchronized window that renders one horizontal slice of a wider
+   * continuous scene (manual span). Works in any browser — the user drags it to
+   * the target monitor and full-screens it. Slice size is derived from each
+   * window's own dimensions, so identical monitors line up seamlessly.
+   */
+  openSpanWindow(index: number, count: number): Window | null {
+    const params = new URLSearchParams({ display: 'secondary', seg: String(index), segs: String(count) });
+    const url = `${location.origin}${location.pathname}?${params.toString()}`;
+    const win = window.open(url, `ps_span_${index}_${count}`, 'width=1280,height=720');
+    if (win) this.openedWindows.push(win);
+    return win;
   }
 
   isSecondary(): boolean {

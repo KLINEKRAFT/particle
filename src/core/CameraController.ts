@@ -146,8 +146,16 @@ export class CameraController {
     this.active.updateMatrixWorld();
   }
 
-  /** For spanned multi-monitor: render a sub-rectangle of one continuous view. */
+  /** For spanned multi-monitor: render a sub-rectangle of one continuous view.
+   *  The camera aspect must match the FULL span so each slice lines up. */
   applyViewOffset(fullW: number, fullH: number, offX: number, offY: number, w: number, h: number): void {
+    const a = fullW / Math.max(1, fullH);
+    this.perspective.aspect = a;
+    const r = this.frameRadius * 1.2;
+    this.orthographic.left = -r * a;
+    this.orthographic.right = r * a;
+    this.orthographic.top = r;
+    this.orthographic.bottom = -r;
     this.perspective.setViewOffset(fullW, fullH, offX, offY, w, h);
     this.orthographic.setViewOffset(fullW, fullH, offX, offY, w, h);
   }
@@ -155,6 +163,7 @@ export class CameraController {
   clearViewOffset(): void {
     this.perspective.clearViewOffset();
     this.orthographic.clearViewOffset();
+    this.updateProjection(); // restore the single-window aspect
   }
 
   dispose(): void {
