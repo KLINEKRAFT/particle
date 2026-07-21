@@ -231,12 +231,33 @@ export class AppController {
   private onSettingChange(path: string, regen: boolean): void {
     if (path === 'color.background') this.rm.setBackground(this.settings.color.background);
     if (path === 'camera.mode' || path.startsWith('camera.')) this.camera.applySettings(this.settings.camera);
-    if (path === 'particles.bloom' || path === 'particles.bloomStrength') {
+    if (path === 'particles.bloom') {
+      // Toggling bloom rebuilds the post pipeline (expensive) — only on toggle.
       this.rm.configureBloom(this.settings.particles.bloom, this.settings.particles.bloomStrength, this.camera.active);
+    } else if (path === 'particles.bloomStrength') {
+      // Dragging strength must be cheap: adjust in place, don't rebuild.
+      this.rm.setBloomStrength(this.settings.particles.bloomStrength);
     }
     if (regen) this.requestRegen(true);
-    this.presets.saveCurrentSettings(this.settings);
-    this.broadcastSettings();
+    // Persisting to LocalStorage and broadcasting are debounced so a slider drag
+    // doesn't do a JSON stringify + storage write on every input event (the main
+    // cause of the UI freezing while adjusting settings).
+    this.schedulePersist();
+    this.scheduleBroadcast();
+  }
+
+  private persistTimer = 0;
+  private broadcastTimer = 0;
+
+  private schedulePersist(): void {
+    window.clearTimeout(this.persistTimer);
+    this.persistTimer = window.setTimeout(() => this.presets.saveCurrentSettings(this.settings), 400);
+  }
+
+  private scheduleBroadcast(): void {
+    if (this.isSecondary) return;
+    window.clearTimeout(this.broadcastTimer);
+    this.broadcastTimer = window.setTimeout(() => this.broadcastSettings(), 120);
   }
 
   private onSourceChange(source: SourceKind): void {
