@@ -125,6 +125,9 @@ export function defaultSettings(): AppSettings {
       pointerStrength: 3,
       pointerRepel: false,
       seed: 1337,
+      spinX: 0,
+      spinY: 0,
+      spinZ: 0,
     },
     color: {
       mode: 'gradient2',

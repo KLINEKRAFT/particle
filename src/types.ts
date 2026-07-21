@@ -236,6 +236,9 @@ export interface MotionSettings {
   pointerStrength: number;
   pointerRepel: boolean;
   seed: number;
+  spinX: number; // rigid turntable rotation of the whole cloud, degrees/sec
+  spinY: number;
+  spinZ: number;
 }
 
 // ---------------------------------------------------------------------------

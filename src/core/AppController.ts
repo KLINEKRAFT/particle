@@ -405,7 +405,7 @@ export class AppController {
         throw new Error('cancelled');
       }
       const data = this.modelData instanceof ArrayBuffer ? this.modelData.slice(0) : this.modelData;
-      return sampleModel(data, this.settings.model, count);
+      return sampleModel(data, this.settings.model, count, this.rm.renderer);
     }
     // image
     if (!this.imageBitmap) {
@@ -429,18 +429,19 @@ export class AppController {
   // ---- Asset loading -------------------------------------------------------
   private async loadModelFile(file: File): Promise<void> {
     try {
-      if (file.size > 80 * 1024 * 1024) throw new Error('model too large (>80MB)');
+      if (file.size > 250 * 1024 * 1024) throw new Error('model too large (>250MB)');
       const isGlb = file.name.toLowerCase().endsWith('.glb');
       this.modelData = isGlb ? await file.arrayBuffer() : await file.text();
       this.settings.source = 'model';
       if (this.settings.model.useModelColor) this.settings.color.mode = 'image';
       this.ui?.refresh();
       this.ui?.setSourceLabel(this.sourceLabel());
+      this.ui?.showToast('Decoding model — this can take a few seconds for large files…', 'info', 30000);
       await this.doGenerate(true);
       this.broadcastSettings();
       this.ui?.showToast('Model loaded: ' + file.name);
     } catch (err) {
-      this.ui?.showToast('Could not load model: ' + (err instanceof Error ? err.message : 'unsupported / compressed'), 'error', 5000);
+      this.ui?.showToast('Could not load model: ' + (err instanceof Error ? err.message : 'unsupported'), 'error', 6000);
     }
   }
 
@@ -770,7 +771,11 @@ export class AppController {
     try {
       // Push uniforms and step the simulation (unless paused).
       this.engine.applySettings(this.settings, this.elapsed);
-      if (!this.paused) this.engine.step(dt, this.elapsed);
+      if (!this.paused) {
+        this.engine.step(dt, this.elapsed);
+        const m = this.settings.motion;
+        this.engine.spin(dt, m.spinX, m.spinY, m.spinZ);
+      }
       this.rm.render(this.camera.active);
     } catch (err) {
       // A GPU-level failure should stop the loop gracefully rather than spam.
