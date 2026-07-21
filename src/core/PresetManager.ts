@@ -1,6 +1,6 @@
 import type { AppSettings, Preset } from '../types';
 import { builtinPresets } from '../presets/builtin';
-import { clone, defaultSettings } from '../config/defaults';
+import { clone, defaultSettings, deepMergeDefaults } from '../config/defaults';
 
 const STORAGE_KEY = 'particle-studio:presets:v1';
 // Bumped when the starting-count logic changes so returning users pick up the
@@ -90,8 +90,8 @@ export class PresetManager {
     if (!parsed.settings || typeof parsed.settings !== 'object') {
       throw new Error('Invalid preset file: missing settings');
     }
-    // Merge onto defaults to tolerate older/partial preset files.
-    const merged = { ...defaultSettings(), ...parsed.settings } as AppSettings;
+    // Deep-merge onto defaults to tolerate older/partial preset files.
+    const merged = deepMergeDefaults(defaultSettings(), parsed.settings) as AppSettings;
     let name = parsed.name || 'Imported preset';
     let i = 2;
     while (this.get(name)) name = `${parsed.name || 'Imported'} ${i++}`;
@@ -110,7 +110,9 @@ export class PresetManager {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return null;
-      return { ...defaultSettings(), ...(JSON.parse(raw) as AppSettings) };
+      // Deep-merge onto defaults so settings saved by an older version (missing
+      // newer nested fields) can't produce undefined values that crash the UI.
+      return deepMergeDefaults(defaultSettings(), JSON.parse(raw)) as AppSettings;
     } catch {
       return null;
     }
