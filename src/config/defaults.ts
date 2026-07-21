@@ -94,6 +94,11 @@ export function defaultSettings(): AppSettings {
       waveDepth: 0,
       edgePriority: 0.4,
     },
+    model: {
+      useModelColor: true,
+      solidColor: '#9fb4ff',
+      scale: 1,
+    },
     particles: {
       count: 20000,
       style: 'soft',
